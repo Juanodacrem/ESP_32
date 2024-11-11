@@ -1,0 +1,25 @@
+Detecting CXX compiler ABI info failed to compile with the following output:
+Change Dir: C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/uart_app/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):C:/ESP32/.espressif/tools/ninja/1.11.1/ninja.exe cmTC_40d1c && ninja: error: loading 'build.ninja': El sistema no puede encontrar el archivo especificado.
+
+
+
+
+
+Determining if the CXX compiler works failed with the following output:
+Change Dir: C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/uart_app/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):C:/ESP32/.espressif/tools/ninja/1.11.1/ninja.exe cmTC_c1fd2 && ninja: error: unknown target 'cmTC_c1fd2'
+
+
+
+Detecting CXX compiler ABI info failed to compile with the following output:
+Change Dir: C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/uart_app/build/CMakeFiles/CMakeTmp
+
+Run Build Command(s):C:/ESP32/.espressif/tools/ninja/1.11.1/ninja.exe cmTC_c23f0 && ninja: error: loading 'build.ninja': El sistema no puede encontrar el archivo especificado.
+
+
+
+
+
