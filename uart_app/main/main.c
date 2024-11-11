@@ -152,7 +152,7 @@ void read_command(void)
             }
             else if (strcmp((char *)data, "2") == 0)
             {
-                
+                ESP_LOGI(TAG, "command_try");
             }
             else
             {
