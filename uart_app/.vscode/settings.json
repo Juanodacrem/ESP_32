@@ -18,5 +18,6 @@
         "stdio.h": "c",
         "gpio.h": "c"
     },
-    "idf.flashType": "UART"
+    "idf.flashType": "UART",
+    "C_Cpp.errorSquiggles": "enabled"
 }

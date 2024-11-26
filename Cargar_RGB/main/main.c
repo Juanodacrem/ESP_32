@@ -120,5 +120,6 @@ void switch_to_partition(esp_partition_subtype_t target_subtype) {
 
 void reset_funtion(void)
 {
+    pStrip_a->set_pixel(pStrip_a, 0, 0, 0, 0); 
     pStrip_a->clear(pStrip_a,TIMEOUT);
 }

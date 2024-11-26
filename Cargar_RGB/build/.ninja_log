@@ -2082,3 +2082,13 @@
 13028	13395	7528318581519074	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/.bin_timestamp	c7a750ce7285a88d
 13396	13515	0	esp-idf/esptool_py/CMakeFiles/app_check_size	813eddd2adf1659
 13396	13515	0	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/esp-idf/esptool_py/CMakeFiles/app_check_size	813eddd2adf1659
+740	887	0	esp-idf/esptool_py/CMakeFiles/app_check_size	813eddd2adf1659
+740	887	0	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/esp-idf/esptool_py/CMakeFiles/app_check_size	813eddd2adf1659
+732	993	7528122704301064	bootloader-prefix/src/bootloader-stamp/bootloader-build	47f5e278a51b860a
+732	993	7528122704301064	bootloader/bootloader.elf	47f5e278a51b860a
+732	993	7528122704301064	bootloader/bootloader.bin	47f5e278a51b860a
+732	993	7528122704301064	bootloader/bootloader.map	47f5e278a51b860a
+732	993	7528122704301064	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/bootloader-prefix/src/bootloader-stamp/bootloader-build	47f5e278a51b860a
+732	993	7528122704301064	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/bootloader/bootloader.elf	47f5e278a51b860a
+732	993	7528122704301064	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/bootloader/bootloader.bin	47f5e278a51b860a
+732	993	7528122704301064	C:/Users/juano/OneDrive/Escritorio/SDK-esp/ESP-32_S3/Cargar_RGB/build/bootloader/bootloader.map	47f5e278a51b860a
