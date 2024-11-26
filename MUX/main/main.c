@@ -65,11 +65,12 @@ static adc_cali_handle_t cali_handle = NULL;
 
 static volatile bool task_running = false;
 
-static const char *initial_request = "\nSelector de multiplexor\n--------------------------------\nPines de seleccionar (XX,XX):";
+static const char *channels_request = "\nSelector de canales de multiplexor\n--------------------------------\nCanales a seleccionar (XX,XX):";
+static const char *channel_ref_request = "\nCanal a comparar con todos\n--------------------------------\nCanal a comparar (XX):";
 static const char *clear = "\033c";
 static const char *return_prompt  = "\nVolver al menu principal (y/n)\n--------------------------------\n";
 static const char *funtion_request = "\nLista de comandos disponibles:\n--------------------------------\n1.-Medir voltaje\n2.-Medir resitencia\n3.-Salir\n--------------------------------\n";
-
+static const char *mux_request = "\nComados multiplexor\n--------------------------------\n1.-Canales individuales\n2.-Canal de referencia\n3.-Canal matriz\n4.-Todos los canales";
 static double voltage_buffer[MEDIAN_FILTER_WINDOW_SIZE];
 static double average_buffer[AVERAGE_WINDOW_SIZE];
 static int buffer_index = 0;
@@ -183,7 +184,7 @@ void task_uart(void *param)
     }
     while (true){
     uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
-    uart_write_bytes(UART_PORT_NUM, initial_request, strlen(initial_request));
+    uart_write_bytes(UART_PORT_NUM, mux_request, strlen(mux_request));
     bzero(data,UART_BUF_SIZE);
     if (xQueueReceive(uart_queue, (void *)&event, portMAX_DELAY)){
         if (event.type == UART_DATA ){
@@ -420,21 +421,7 @@ void select_request(void)
     }
     free(data); 
 }
-/*
-void set_mux (int16_t mux_pin, int16_t mux_pin_1)
-{
-    gpio_set_level(MUX1_S0, (mux_pin & 0x01) ? 1 : 0);
-    gpio_set_level(MUX1_S1, (mux_pin & 0x02) ? 1 : 0);
-    gpio_set_level(MUX1_S2, (mux_pin & 0x04) ? 1 : 0);
-    gpio_set_level(MUX1_S3, (mux_pin & 0x08) ? 1 : 0);
 
-    gpio_set_level(MUX2_S0, (mux_pin_1 & 0x01) ? 1 : 0);
-    gpio_set_level(MUX2_S1, (mux_pin_1 & 0x02) ? 1 : 0);
-    gpio_set_level(MUX2_S2, (mux_pin_1 & 0x04) ? 1 : 0);
-    gpio_set_level(MUX2_S3, (mux_pin_1 & 0x08) ? 1 : 0);
-    ESP_LOGI(TAG, "termino de setear");
-}
-*/
 void set_mux(int16_t mux_pin, int16_t mux_pin_1) {
     const int mux_pins[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
     const int mux_pins_1[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
@@ -456,7 +443,7 @@ void pin_1_1(void)
     }
     while (true){
     uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
-    uart_write_bytes(UART_PORT_NUM, initial_request, strlen(initial_request));
+    uart_write_bytes(UART_PORT_NUM, channel_ref_request, strlen(channel_ref_request));
     bzero(data,UART_BUF_SIZE);
     if (xQueueReceive(uart_queue, (void *)&event, portMAX_DELAY)){
         if (event.type == UART_DATA && !task_running){
@@ -491,19 +478,17 @@ void pin_ref(void)
     }
     while (true){
     uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
-    uart_write_bytes(UART_PORT_NUM, initial_request, strlen(initial_request));
+    uart_write_bytes(UART_PORT_NUM, channel_ref_request, strlen(channel_ref_request));
     bzero(data,UART_BUF_SIZE);
     if (xQueueReceive(uart_queue, (void *)&event, portMAX_DELAY)){
         if (event.type == UART_DATA && !task_running){
             task_running = true;
             int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE - 1, 20 / portTICK_PERIOD_MS);
             data[len - 1] = '\0';
-            int16_t mux_pin, mux_pin_1;
+            int16_t mux_pin;
             mux_pin = ((data[0] - 48)*10) + (data[1] - 48);
-            mux_pin_1 = ((data[3] - 48)*10) + (data[4] - 48);
-            if (mux_pin >= 0 && mux_pin <16 && mux_pin_1 >= 0 && mux_pin_1 <16){
-                set_mux(mux_pin, mux_pin_1);
-                select_request();
+            if (mux_pin >= 0 && mux_pin <16){
+                mux_ref(mux_pin);
             }
             else{
                 ESP_LOGI(TAG, "Unrecognized command");
@@ -518,5 +503,50 @@ void pin_ref(void)
 
 void mux_ref(int8_t mux_pin)
 {
-    int a;
+    const int mux_pins[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
+    const int mux_pins_1[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
+    int8_t mux_pin_1 = 0;
+    double receivedData;
+    double resistor_value = 0;
+
+    uint8_t *data = (uint8_t *)malloc(UART_BUF_SIZE);
+    uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
+
+    if (data == NULL) {
+        ESP_LOGE(TAG, "Error de memoria");
+        return;
+    }
+
+    uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));
+
+    for (int i = 0; i < 4; i++) {
+        gpio_set_level(mux_pins[i], (mux_pin >> i) & 0x01);
+    }
+
+    while (true){
+    for (size_t i = 0; i < 16; i++)
+    {
+        gpio_set_level(mux_pins_1[i], (mux_pin_1 >> i) & 0x01);
+        if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY) == pdPASS) {
+            char buffer[50];
+            resistor_value = (receivedData * R_REF) / (calibration_adc_ref() - receivedData);
+            snprintf(buffer, sizeof(buffer), "\nResistencia[%d]: %f R         ",i , resistor_value);
+            uart_write_bytes(UART_PORT_NUM, buffer, strlen(buffer)); 
+            ESP_LOGI(TAG, "Resistencia: %f\n", resistor_value);
+        }
+        mux_pin_1++;
+        vTaskDelay(pdMS_TO_TICKS(1000));    
+    }
+
+    mux_pin = 0;
+
+    int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE, 20 / portTICK_PERIOD_MS);
+    if (len > 0) {
+        data[len - 1] = '\0'; 
+        if (strcmp((char *)data, "y") == 0) { 
+            break;  
+        }
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
