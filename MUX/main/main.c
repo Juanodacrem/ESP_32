@@ -1,5 +1,5 @@
 /**
- * @file mux_control.c
+ * @file main.c
  * @brief Control del multiplexor y cálculo de resistencias atraves de comandos UART.
  * @author Juan Mercado
  * @date 28/11/2024
@@ -20,29 +20,29 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "driver/adc.h"
 
- //definitions of I2C device
+// Definitions of I2C device
 #define I2C_MASTER_FREQ_HZ     100000
 #define I2C_MASTER_SCL         GPIO_NUM_12
 #define I2C_MASTER_SDA         GPIO_NUM_11 
 #define I2C_PORT               I2C_NUM_0
 #define ADS1115_ADDR           0x48
 
-//definitions of UART device
+// Definitions of UART device
 #define BAUD_RATE              115200
 #define UART_PORT_NUM          UART_NUM_1
 #define UART_TX_PIN            GPIO_NUM_17
-#define UART_RX_PIN            GPIO_NUM_16
+#define UART_RX_PIN            GPIO_NUM_18
 #define UART_BUF_SIZE          1024
 #define TASK_STACK_SIZE        1024
 #define QUEUE_SIZE             2
 
-//Setup R_reference
-//#define R_REF                  10000000
+// Setup R_reference
+#define R_REF                  995000
 //#define R_REF                  1500000
-#define R_REF                  99000
+//#define R_REF                  99000
 //#define R_REF                  1000
 
-//definitions for ADC_calibrations
+// Definitions for ADC_calibrations
 #define ADC_CHANNEL            ADC_CHANNEL_0
 #define ADC_CHANNEL_VREF       ADC_CHANNEL_1 
 #define ADC_ATTEN              ADC_ATTEN_DB_12
@@ -54,11 +54,11 @@
 #define VOLTAGE_LOW            500
 #define VOLTAGE_VERY_LOW       200
 
-//definitions for media filter
+// Definitions for media filter
 #define AVERAGE_WINDOW_SIZE 3  
 #define MEDIAN_FILTER_WINDOW_SIZE 5
 
-//definitions for control muxes
+// Definitions for control muxes
 #define MUX2_S3 35
 #define MUX2_S2 36
 #define MUX2_S1 37
@@ -101,19 +101,20 @@ int compare(const void *a, const void *b);
 double median_weighted_average(double *buffer, int size);
 double apply_median_average_filter(double new_voltage);
 esp_err_t mux_init(void);
-void set_mux(int16_t mux_pin, int16_t mux_pin_1);
+void set_mux(int16_t mux_1_ch, int16_t mux_2_ch);
 void select_request(void);
 void pin_1_1(void);
 void pin_ref(void);
 void pin_arr(void);
 void pin_all(void);
-void mux_ref(int8_t mux_pin);
-void mux_arr(int8_t mux_pin, int8_t mux_pin_1);
+void mux_ref(int8_t mux_1_ch);
+void mux_arr(int8_t mux_1_ch, int8_t mux_2_ch);
 void reset_filter(void);
+void prueba(void);
 
 void app_main() {
-    dataQueue = xQueueCreate(QUEUE_SIZE, sizeof(double));           //Creation of queue between ads1115_task and UART_task                       
-    if (i2c_init() == ESP_OK && init_uart() == ESP_OK && mux_init() == ESP_OK) {    //Control of error initializing task
+    dataQueue = xQueueCreate(QUEUE_SIZE, sizeof(double));           //Creue between ads1115_task and UART_task                       
+    if (i2c_init() == ESP_OK && init_uart() == ESP_OK && mux_init() == ESP_OK) {    //Control of error initializineation of qug task
         xTaskCreate(ads1115_task, "ads1115_task", TASK_STACK_SIZE * 3, NULL, 5, &xTaskSensorHandle);
         xTaskCreate(task_uart, "task_uart", TASK_STACK_SIZE * 3, NULL, 4, NULL);
         ESP_LOGI(TAG, "Application initialized");
@@ -163,36 +164,36 @@ esp_err_t init_uart(void) {
 */
 void ads1115_task(void *param)
 {
+    double voltage;
+    double filtered_voltage;
+    uint8_t count= 5;
+
     //ADS1115 component parameter initialization
     ads1115_t ads = ads1115_config(I2C_PORT, ADS1115_ADDR);
-    ads1115_set_rdy_pin(&ads, GPIO_NUM_5);
+    //ads1115_set_rdy_pin(&ads, GPIO_NUM_5);
     ads1115_set_mux(&ads, ADS1115_MUX_0_1);
     ads1115_set_mode(&ads, ADS1115_MODE_CONTINUOUS);
     ads1115_set_sps(&ads, ADS1115_SPS_8);
     ads1115_set_max_ticks(&ads, pdMS_TO_TICKS(100));
+
     while (true)
     {
-    ESP_LOGI("Valor del mux", "Valor return: %d", calibration_adc()); 
-    ads1115_set_pga(&ads, calibration_adc());   //recalibrating scale of ads
-    
-    int16_t raw_value;
-    double voltage;
-    double filtered_voltage;
-    
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);    //waiting to continue receiving and sending data
-    uint8_t count= 5;
-    for (size_t i = 0; i < count; i++)
-    {
-        raw_value = ads1115_get_raw(&ads);
-        voltage = ads1115_get_voltage(&ads);
-        filtered_voltage = apply_median_average_filter(voltage);
-    }
+        //ESP_LOGI("Valor del mux", "Valor return: %d", calibration_adc()); 
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);    //waiting to continue receiving and sending data
 
-    xQueueReset(dataQueue);                   //clear queue before sending data
-    if (xQueueSend(dataQueue, &filtered_voltage, pdMS_TO_TICKS(100)) != pdPASS){
-        printf("Error sending data to queue\n");
-    }
-    reset_filter();     //reset filter for new medition                        
+        ads1115_set_pga(&ads, calibration_adc());   //recalibrating scale of ads
+    
+        for (size_t i = 0; i < count; i++)
+        {
+            voltage = ads1115_get_voltage(&ads);
+            filtered_voltage = apply_median_average_filter(voltage);
+        }
+
+        xQueueReset(dataQueue);                   //clear queue before sending data
+        if (xQueueSend(dataQueue, &filtered_voltage, pdMS_TO_TICKS(100)) != pdPASS){
+            printf("Error sending data to queue\n");
+        }
+        reset_filter();     //reset filter for new medition                        
     }
 }
 /**
@@ -227,6 +228,9 @@ void task_uart(void *param)
             }
             else if (strcmp((char *)data, "4") == 0){
                 pin_all();
+            }
+            else if (strcmp((char *)data, "5") == 0){
+                prueba();
             }
             else{
                 ESP_LOGI(TAG, "Unrecognized command");
@@ -323,7 +327,7 @@ static bool init_adc_calibration() {
 
     ret = adc_cali_create_scheme_curve_fitting(&cali_config, &cali_handle);
     if (ret == ESP_ERR_NOT_SUPPORTED) {
-        ESP_LOGW(TAG, "Esquema de calibración de curva no soportado, probando esquema de línea.");
+        ESP_LOGW(TAG, "Esquema de calibración de curva no soportado");
     }
     ESP_LOGI(TAG, "Calibración de ADC inicializada correctamente.");
     return true;
@@ -356,7 +360,7 @@ ads1115_fsr_t calibration_adc(void)
             ESP_LOGE(TAG, "Error al convertir el valor RAW a voltaje calibrado");
         }
         return ADS1115_FSR_6_144;
-        vTaskDelay(pdMS_TO_TICKS(1000));  
+        //vTaskDelay(pdMS_TO_TICKS(1000));  
 }
 /**
 * @brief esp_adc calibrate voltage to calculate resistance
@@ -382,51 +386,7 @@ double calibration_adc_ref(void)
             ESP_LOGE(TAG, "Error al convertir el valor RAW a voltaje calibrado");
         }
         return 0;
-        vTaskDelay(pdMS_TO_TICKS(1000));  
-}
-/**
-* @brief calculates an average after sorting the elements and removing extreme values
-* @param buffer arr to be ordered
-* @param size size of the arr.
-* @return average of internal elements
-*/
-double median_weighted_average(double *buffer, int size) {
-    qsort(buffer, size, sizeof(double), compare);       //order arr in asendent order
-    double sum = 0;
-    int valid_elements = size - 2;      //excludes first and last element of the arr
-    for (int i = 1; i < size - 1; i++) {
-        sum += buffer[i];
-    }
-    return sum / valid_elements;
-}
-/**
-* @brief comparate elements of arr
-* @param a item to compare
-* @param b item to compare
-* @return difference of items
-*/
-int compare(const void *a, const void *b) {
-    return (*(double *)a - *(double *)b);
-}
-/**
-* @brief Combined median and average filter
-* @param new_voltage voltage to apply filter
-* @return average of values
-*/
-double apply_median_average_filter(double new_voltage) {
-    voltage_buffer[buffer_index] = new_voltage;
-    buffer_index = (buffer_index + 1) % MEDIAN_FILTER_WINDOW_SIZE;      //stores voltages to apply filter
-
-    double median = median_weighted_average(voltage_buffer, MEDIAN_FILTER_WINDOW_SIZE); // apply media filter
-
-    average_buffer[avg_index] = median;
-    avg_index = (avg_index + 1) % AVERAGE_WINDOW_SIZE;
-
-    double sum = 0.0;
-    for (int i = 0; i < AVERAGE_WINDOW_SIZE; i++) {     //calculate the average
-        sum += average_buffer[i];
-    }
-    return sum / AVERAGE_WINDOW_SIZE;
+        //vTaskDelay(pdMS_TO_TICKS(1000));  
 }
 /**
 * @brief initializing MUX channels
@@ -484,16 +444,16 @@ void select_request(void)
 }
 /**
 * @brief set_mux compare between two channels
-* @param mux_pin channel of principal mux
-* @param mux_pin_1 channel of second mux
+* @param mux_1_ch channel of principal mux
+* @param mux_2_ch channel of second mux
 */
-void set_mux(int16_t mux_pin, int16_t mux_pin_1) {
-    const int mux_pins[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
-    const int mux_pins_1[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
+void set_mux(int16_t mux_1_ch, int16_t mux_2_ch) {
+    const int mux_1[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
+    const int mux_2[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
     /*set the correct convination in mux channels*/
     for (int i = 0; i < 4; i++) {
-        gpio_set_level(mux_pins[i], (mux_pin >> i) & 0x01);     
-        gpio_set_level(mux_pins_1[i], (mux_pin_1 >> i) & 0x01);
+        gpio_set_level(mux_1[i], (mux_1_ch >> i) & 0x01);     
+        gpio_set_level(mux_2[i], (mux_2_ch >> i) & 0x01);
     }
     ESP_LOGI(TAG, "Mux settings applied");
 }
@@ -533,11 +493,11 @@ void pin_1_1(void) {
                         break;
                     }
                     /*extract the channel to use*/
-                    int16_t mux_pin = ((data[0] - '0') * 10) + (data[1] - '0');
-                    int16_t mux_pin_1 = ((data[3] - '0') * 10) + (data[4] - '0');
+                    int16_t mux_1_ch = ((data[0] - '0') * 10) + (data[1] - '0');
+                    int16_t mux_2_ch = ((data[3] - '0') * 10) + (data[4] - '0');
 
-                    if (mux_pin >= 0 && mux_pin < 16 && mux_pin_1 >= 0 && mux_pin_1 < 16) {
-                        set_mux(mux_pin, mux_pin_1);  // Configure the MUX pins
+                    if (mux_1_ch >= 0 && mux_1_ch < 16 && mux_2_ch >= 0 && mux_2_ch < 16) {
+                        set_mux(mux_1_ch, mux_2_ch);  // Configure the MUX pins
                         select_request();            // Process the selection
                     } else {
                         ESP_LOGI(TAG, "Comando no reconocido");
@@ -595,9 +555,9 @@ void pin_ref(void) {
                     }
 
                     /*process reference mux channel*/
-                    int8_t mux_pin = ((data[0] - '0') * 10) + (data[1] - '0');
-                    if (mux_pin >= 0 && mux_pin < 16) {
-                        mux_ref(mux_pin);  //Call to process with reference channel
+                    int8_t mux_1_ch = ((data[0] - '0') * 10) + (data[1] - '0');
+                    if (mux_1_ch >= 0 && mux_1_ch < 16) {
+                        mux_ref(mux_1_ch);  //Call to process with reference channel
                     } else {
                         ESP_LOGI(TAG, "Comando no reconocido");
                     }
@@ -619,86 +579,83 @@ void pin_ref(void) {
 }
 /**
 * @brief Process mux reference
-* @param mux_pin channel of principal mux for reference
+* @param mux_1_ch channel of principal mux for reference
 */
-void mux_ref(int8_t mux_pin)
-{
-    /*asignation of mux channels*/
-    const int mux_pins[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
-    const int mux_pins_1[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
-    int8_t mux_pin_1 = 0;
-    double receivedData;
-    double resistor_value = 0;
+void mux_ref(int8_t mux_1_ch) {
+    uart_event_t event;
+    const int mux_1[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
+    const int mux_2[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
+    double receivedData, resistor_value;
     uint8_t flag_break = 0;
+    double supply_voltage = calibration_adc_ref();
+    uint8_t data[UART_BUF_SIZE]; // Usamos un búfer estático
 
-    uint8_t *data = (uint8_t *)malloc(UART_BUF_SIZE);
     uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
+    uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));  // Enviar mensaje para volver al monitor
 
-    if (data == NULL) {
-        ESP_LOGE(TAG, "Error de memoria");
-        return;
-    }
-
-    uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));      //send option to retur to serial monitor
-
+    // Configuración inicial de los pines GPIO para mux_1
     for (int i = 0; i < 4; i++) {
-        gpio_set_level(mux_pins[i], (mux_pin >> i) & 0x01);     //Set mux pin as reference
+        gpio_set_level(mux_1[i], (mux_1_ch >> i) & 0x01); // Configura los pines del multiplexor
     }
 
-    while (true){
-    for (size_t i = 0; i < 16; i++)     // get the 15 mux channels 
-    {
-        for (size_t i = 0; i < 4; i++)
-        {
-        gpio_set_level(mux_pins_1[i], (mux_pin_1 >> i) & 0x01); //re-assign the secondary mux channel
-        }
-        xTaskNotifyGive(xTaskSensorHandle);     // Send notification to task_ads1115 for sending data
-        if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY) == pdPASS) {
-            char buffer[50];
-            resistor_value = (receivedData * R_REF) / (calibration_adc_ref() - receivedData);       // Calcualte resistance
-            snprintf(buffer, sizeof(buffer), "\nResistencia[%d]: %f Ω         ",i , resistor_value);        // Convert the resistence value to string and save in buff
-            uart_write_bytes(UART_PORT_NUM, buffer, strlen(buffer));
-            ESP_LOGI(TAG, "Resistencia: %f\n", resistor_value);
-        }
+    while (true) {
+        for (int mux_2_ch = 0; mux_2_ch < 16; mux_2_ch++) { // Recorre todos los canales de mux_2
+            // Configurar los pines de mux_2
+            for (int i = 0; i < 4; i++) {
+                gpio_set_level(mux_2[i], (mux_2_ch >> i) & 0x01);
+            }
+            xTaskNotifyGive(xTaskSensorHandle); // Notificar a la tarea ADS1115
 
-        mux_pin_1++;    // Increment the secondary mux channel
+            if (xQueueReceive(dataQueue, &receivedData, pdMS_TO_TICKS(100)) == pdPASS) { // Tiempo de espera ajustado
+                char buffer[50];
+                resistor_value = (receivedData * R_REF) / (supply_voltage - receivedData); // Calcular resistencia
+                snprintf(buffer, sizeof(buffer), "\nResistencia[%d]: %f Ω         ", mux_2_ch, resistor_value);
+                uart_write_bytes(UART_PORT_NUM, buffer, strlen(buffer));
+                ESP_LOGI(TAG, "Resistencia: %f\n", resistor_value);
+            } else {
+                // Manejar la situación cuando no se reciben datos
+                ESP_LOGW(TAG, "No se recibieron datos a tiempo");
+            }
 
-        int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE, 20 / portTICK_PERIOD_MS); // Wait for exit condition
-        if (len > 0) {
-            data[len - 1] = '\0'; 
-            if (strcmp((char *)data, "y") == 0) {
-                flag_break = 1;
-                break;  
+            int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE, 20 / portTICK_PERIOD_MS); // Esperar la condición de salida
+            if (len > 0) {
+                data[len - 1] = '\0';  // Asegurar terminación de cadena
+                if (strcmp((char *)data, "y") == 0) {
+                    flag_break = 1;
+                    break;
+                }
+            }
+
+            if (flag_break) {
+                break;
             }
         }
-    }
-    uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
-    uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));
-    if (flag_break == 1)
-    {
-        flag_break = 0;
-        break;
-    }
 
-    mux_pin = 0;        // Reset secondary mux value
+        if (flag_break) {
+            flag_break = 0;
+            break;
+        }
 
-    vTaskDelay(pdMS_TO_TICKS(1000));
+        // Revisa eventos UART en la cola
+        if (xQueueReceive(uart_queue, (void *)&event, pdMS_TO_TICKS(100))) { // Tiempo de espera ajustado
+            if (event.type == UART_DATA) {
+                int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE - 1, 20 / portTICK_PERIOD_MS);
+                if (len > 0) {
+                    data[len - 1] = '\0';  // Asegurar terminación de cadena
+                    if (strcmp((char *)data, "y") == 0) {
+                        flag_break = 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
+        uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
-/**
-* @brief Reset filter values
-*/
-void reset_filter(void) {
-    buffer_index = 0;
-    avg_index = 0;
-    for (int i = 0; i < MEDIAN_FILTER_WINDOW_SIZE; i++) {
-        voltage_buffer[i] = 0.0;
-    }
-    for (int i = 0; i < AVERAGE_WINDOW_SIZE; i++) {
-        average_buffer[i] = 0.0;
-    }
-    ESP_LOGI(TAG, "Filtros de voltaje y promedio reiniciados.");
-}
+
 /**
 * @brief Menu for selection of arr (primary mux, cap values)
 */
@@ -734,11 +691,11 @@ void pin_arr(void) {
                         break;
                     }
                     // Porcess primary mux reference and cap value
-                    int16_t mux_pin = ((data[0] - '0') * 10) + (data[1] - '0');
-                    int16_t mux_pin_1 = ((data[3] - '0') * 10) + (data[4] - '0');
+                    int16_t mux_1_ch = ((data[0] - '0') * 10) + (data[1] - '0');
+                    int16_t mux_2_ch = ((data[3] - '0') * 10) + (data[4] - '0');
 
-                    if (mux_pin >= 0 && mux_pin < 16 && mux_pin_1 >= 0 && mux_pin_1 < 16) {
-                        mux_arr(mux_pin, mux_pin_1);
+                    if (mux_1_ch >= 0 && mux_1_ch < 16 && mux_2_ch >= 0 && mux_2_ch < 16) {
+                        mux_arr(mux_1_ch, mux_2_ch);
                     } else {
                         ESP_LOGI(TAG, "Comando no reconocido");
                     }
@@ -758,13 +715,14 @@ void pin_arr(void) {
 }
 /**
 * @brief Process mux arr
-* @param mux_pin channel of principal mux for reference
-* @param mux_pin_1 Cap of values to read
+* @param mux_1_ch channel of principal mux for reference
+* @param mux_2_ch Cap of values to read
 */
-void mux_arr(int8_t mux_pin, int8_t mux_pin_1) {
+void mux_arr(int8_t mux_1_ch, int8_t mux_2_ch) {
     /*asignation of mux channels*/
-    const int mux_pins[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
-    const int mux_pins_1[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
+    const int mux_1[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
+    const int mux_2[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
+    uart_event_t event;
     double receivedData;
     double resistor_value = 0;
     uint8_t flag_break = 0;
@@ -780,26 +738,26 @@ void mux_arr(int8_t mux_pin, int8_t mux_pin_1) {
 
     while (true) {
         // Copy of parameters
-        int8_t mux_pin_f = mux_pin;
-        int8_t mux_pin_1_f = mux_pin;
+        int8_t mux_1_ch_f = mux_1_ch;
+        int8_t mux_2_ch_f = mux_1_ch;
 
-        for (size_t i = mux_pin; i <= mux_pin_1; i++) {     // Compare the values ​​of the reference mux up to the limit of values
-            for (size_t j = mux_pin_f; j <= mux_pin_1; j++) { // Increments the value of the secondary mux
+        for (size_t i = mux_1_ch; i <= mux_2_ch; i++) {     // Compare the values ​​of the reference mux up to the limit of values
+            for (size_t j = mux_1_ch_f; j <= mux_2_ch; j++) { // Increments the value of the secondary mux
                 for (size_t k = 0; k < 4; k++) {        // Re-assing the muxes value
-                    gpio_set_level(mux_pins[k], (mux_pin_f >> k) & 0x01);
-                    gpio_set_level(mux_pins_1[k], (mux_pin_1_f >> k) & 0x01);
+                    gpio_set_level(mux_1[k], (mux_1_ch_f >> k) & 0x01);
+                    gpio_set_level(mux_2[k], (mux_2_ch_f >> k) & 0x01);
                 }
 
                 xTaskNotifyGive(xTaskSensorHandle);     // Send notification to task_ads1115 for sending data
                 if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY) == pdPASS) {
                     char buffer[50];
                     resistor_value = (receivedData * R_REF) / (calibration_adc_ref() - receivedData);       // Calculate resitence
-                    snprintf(buffer, sizeof(buffer), "\nResistencia[%d][%d]: %f Ω", mux_pin_f, mux_pin_1_f, resistor_value);        // Convert the resistence value to string and save in buff
+                    snprintf(buffer, sizeof(buffer), "\nResistencia[%d][%d]: %f Ω", mux_1_ch_f, mux_2_ch_f, resistor_value);        // Convert the resistence value to string and save in buff
                     uart_write_bytes(UART_PORT_NUM, buffer, strlen(buffer));
                     ESP_LOGI(TAG, "Resistencia: %f", resistor_value);
                 }
 
-                mux_pin_1_f++;      // Increment the secondary mux
+                mux_2_ch_f++;      // Increment the secondary mux
                 // Wait for exit condition
                 int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE, 20 / portTICK_PERIOD_MS);
                 if (len > 0) {
@@ -811,12 +769,25 @@ void mux_arr(int8_t mux_pin, int8_t mux_pin_1) {
                 }
             }
             if (flag_break == 1) break;
-            mux_pin_f++;    // Increment the primary mux value
-            mux_pin_1_f = mux_pin_f;    // Match primary mux and secondary mux 
+            mux_1_ch_f++;    // Increment the primary mux value
+            mux_2_ch_f = mux_1_ch_f;    // Match primary mux and secondary mux 
         }
 
         if (flag_break == 1) break;
+        if (xQueueReceive(uart_queue, (void *)&event, portMAX_DELAY)) {
+            if (event.type == UART_DATA) {
+                task_running = true;
 
+                int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE - 1, 20 / portTICK_PERIOD_MS);
+                if (len > 0) {
+                    data[len - 1] = '\0';  // Safe chain termination
+                    if (strcmp((char *)data, "y") == 0) {
+                    flag_break = 1;
+                    break;  
+                    }
+                }
+            }
+    }
         uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
         uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -830,10 +801,11 @@ void mux_arr(int8_t mux_pin, int8_t mux_pin_1) {
 void pin_all(void)
 {
     /*asignation of mux channels*/
-    const int mux_pins[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
-    const int mux_pins_1[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
-    int8_t mux_pin = 0;
-    int8_t mux_pin_1 = 0;
+    const int mux_1[4] = {MUX1_S0, MUX1_S1, MUX1_S2, MUX1_S3};
+    const int mux_2[4] = {MUX2_S0, MUX2_S1, MUX2_S2, MUX2_S3};
+    uart_event_t event;
+    int8_t mux_1_ch = 0;
+    int8_t mux_2_ch = 0;
     double receivedData;
     double resistor_value = 0;
     uint8_t flag_break = 0;
@@ -855,8 +827,8 @@ void pin_all(void)
         {
             for (size_t i = 0; i < 4; i++)      // Re-assing muxes
             {
-            gpio_set_level(mux_pins[i], (mux_pin >> i) & 0x01);
-            gpio_set_level(mux_pins_1[i], (mux_pin_1 >> i) & 0x01);
+            gpio_set_level(mux_1[i], (mux_1_ch >> i) & 0x01);
+            gpio_set_level(mux_2[i], (mux_2_ch >> i) & 0x01);
             }
             xTaskNotifyGive(xTaskSensorHandle);     // Send notification to task_ads1115 for sending data
             if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY) == pdPASS) {
@@ -866,7 +838,7 @@ void pin_all(void)
                 uart_write_bytes(UART_PORT_NUM, buffer, strlen(buffer));        // Send resitence value 
                 ESP_LOGI(TAG, "Resistencia: %f\n", resistor_value);
             }
-            mux_pin_1++;    // Increment secondary mux value
+            mux_2_ch++;    // Increment secondary mux value
             // Wait for exit condition
             int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE, 20 / portTICK_PERIOD_MS);
             if (len > 0) {
@@ -881,7 +853,21 @@ void pin_all(void)
         {
             break;
         }
-        mux_pin++;      // Increment primary mux value
+        mux_1_ch++;      // Increment primary mux value
+    }
+    if (xQueueReceive(uart_queue, (void *)&event, portMAX_DELAY)) {
+            if (event.type == UART_DATA) {
+                task_running = true;
+
+                int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE - 1, 20 / portTICK_PERIOD_MS);
+                if (len > 0) {
+                    data[len - 1] = '\0';  // Safe chain termination
+                    if (strcmp((char *)data, "y") == 0) {
+                    flag_break = 1;
+                    break;  
+                    }
+                }
+            }
     }
     uart_write_bytes(UART_PORT_NUM, clear, strlen(clear));
     uart_write_bytes(UART_PORT_NUM, return_prompt, strlen(return_prompt));
@@ -890,7 +876,92 @@ void pin_all(void)
         flag_break = 0;
         break;
     }
-    mux_pin = 0; // Reset primary mux value
+    mux_1_ch = 0; // Reset primary mux value
+    int len = uart_read_bytes(UART_PORT_NUM, data, UART_BUF_SIZE, portMAX_DELAY);
+            if (len > 0) {
+                data[len - 1] = '\0'; 
+                if (strcmp((char *)data, "y") == 0) {
+                    flag_break = 1;
+                    break;  
+                }
+            }
     vTaskDelay(pdMS_TO_TICKS(1000));
     }
+}
+/**
+* @brief Reset filter values
+*/
+void reset_filter(void) {
+    buffer_index = 0;
+    avg_index = 0;
+    memset(voltage_buffer, 0, MEDIAN_FILTER_WINDOW_SIZE * sizeof(double));
+    memset(average_buffer, 0, AVERAGE_WINDOW_SIZE * sizeof(double));
+    ESP_LOGI(TAG, "Filtros de voltaje y promedio reiniciados.");
+}
+/**
+* @brief comparate elements of arr
+* @param a item to compare
+* @param b item to compare
+* @return difference of items
+*/
+int compare(const void *a, const void *b) {
+    return (*(double *)a - *(double *)b);
+}
+/**
+* @brief Combined median and average filter
+* @param new_voltage voltage to apply filter
+* @return average of values
+*/
+double apply_median_average_filter(double new_voltage) {
+    voltage_buffer[buffer_index] = new_voltage;
+    buffer_index = (buffer_index + 1) % MEDIAN_FILTER_WINDOW_SIZE;      //stores voltages to apply filter
+
+    double median = median_weighted_average(voltage_buffer, MEDIAN_FILTER_WINDOW_SIZE); // apply media filter
+
+    average_buffer[avg_index] = median;
+    avg_index = (avg_index + 1) % AVERAGE_WINDOW_SIZE;
+
+    double sum = 0.0;
+    for (int i = 0; i < AVERAGE_WINDOW_SIZE; i++) {     //calculate the average
+        sum += average_buffer[i];
+    }
+    return sum / AVERAGE_WINDOW_SIZE;
+}
+/**
+* @brief calculates an average after sorting the elements and removing extreme values
+* @param buffer arr to be ordered
+* @param size size of the arr.
+* @return average of internal elements
+*/
+double median_weighted_average(double *buffer, int size) {
+    qsort(buffer, size, sizeof(double), compare);       //order arr in asendent order
+    double sum = 0;
+    int valid_elements = size - 2;      //excludes first and last element of the arr
+    for (int i = 1; i < size - 1; i++) {
+        sum += buffer[i];
+    }
+    return sum / valid_elements;
+}
+
+void prueba(void)
+{
+    double receivedData;
+    double resistor_value = 0;
+    uint8_t count = 65;
+    while (true)
+    {
+    for (size_t i = 0; i < count; i++)
+    {
+    xTaskNotifyGive(xTaskSensorHandle);     // Send notification to task_ads1115 for sending data
+            if (xQueueReceive(dataQueue, &receivedData, portMAX_DELAY) == pdPASS) {
+                char buffer[50];
+                resistor_value = (receivedData * R_REF) / (calibration_adc_ref() - receivedData);       // Calculate resistence
+                snprintf(buffer, sizeof(buffer), "\nResistencia%f R         ", resistor_value);     // Convert the resistence value to string and save in buff
+                uart_write_bytes(UART_PORT_NUM, buffer, strlen(buffer));        // Send resitence value 
+                ESP_LOGI(TAG, "Resistencia: %f\n", resistor_value);
+            }
+    }
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    
 }
