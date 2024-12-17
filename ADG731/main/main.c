@@ -2,7 +2,7 @@
 #include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
-#include "esp_rom_sys.h" // For delay functions
+#include "esp_rom_sys.h" 
 
 #define TAG "ADG731"
 
@@ -19,12 +19,6 @@
  */
 #define ADG731_ENABLE  0x10 // Bit 4 set to enable a channel
 #define ADG731_DISABLE 0x00 // Bit 4 clear to disable all channels
-
-/**
- * ADG731 Timing Constants (in nanoseconds)
- */
-#define ADG731_MIN_SYNC_LOW_TIME_NS   40  // t5: Minimum SYNC low time (40 ns)
-#define ADG731_MIN_SYNC_HIGH_TIME_NS  33  // t8: Minimum SYNC high time (33 ns)
 
 /**
  * Structure to hold ADG731 SPI device handle and configurations
@@ -109,7 +103,6 @@ esp_err_t adg731_set_channel(adg731_t *dev, uint8_t channel) {
 
     uint8_t command = ADG731_ENABLE | (channel & 0x1F); // Create command byte
     gpio_set_level(dev->cs_pin, 0); // Enable CS
-    adg731_delay_ns(ADG731_MIN_SYNC_LOW_TIME_NS); // Ensure minimum CS low time
 
     spi_transaction_t t = {
         .length = 8,
@@ -117,7 +110,6 @@ esp_err_t adg731_set_channel(adg731_t *dev, uint8_t channel) {
     };
 
     esp_err_t ret = spi_device_transmit(dev->spi_handle, &t);
-    adg731_delay_ns(ADG731_MIN_SYNC_HIGH_TIME_NS); // Ensure minimum SYNC high time
     gpio_set_level(dev->cs_pin, 1); // Disable CS
 
     if (ret != ESP_OK) {
@@ -140,7 +132,6 @@ esp_err_t adg731_all_off(adg731_t *dev) {
 
     uint8_t command = ADG731_DISABLE; // Command to disable all channels
     gpio_set_level(dev->cs_pin, 0); // Enable CS
-    adg731_delay_ns(ADG731_MIN_SYNC_LOW_TIME_NS); // Ensure minimum CS low time
 
     spi_transaction_t t = {
         .length = 8,
@@ -148,7 +139,6 @@ esp_err_t adg731_all_off(adg731_t *dev) {
     };
 
     esp_err_t ret = spi_device_transmit(dev->spi_handle, &t);
-    adg731_delay_ns(ADG731_MIN_SYNC_HIGH_TIME_NS); // Ensure minimum SYNC high time
     gpio_set_level(dev->cs_pin, 1); // Disable CS
 
     if (ret != ESP_OK) {
